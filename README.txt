@@ -4,6 +4,7 @@ require(iterpc)
 require(R.utils)
 require(stringr)
 require(AlgDesign)
+require(doParallel)
 Example of input interaction
 ------------------------------------------------------------
 What is the filename for your .csv data? dataset.csv

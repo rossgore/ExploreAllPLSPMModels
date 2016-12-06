@@ -2,7 +2,34 @@ require(plspm)
 require(iterpc)
 require(R.utils)
 require(stringr)
+require(doParallel)
 require(AlgDesign)
+runModel <- function(modelData, numberOfFactors, outerModelDetails, innerModelDetails, indexDetails)
+{
+		currentRow = outerModelDetails
+		inner = matrix(, nrow=numberOfFactors, ncol=numberOfFactors)
+		inner[1,] = rep(0, numberOfFactors)
+		for (k in 2:numberOfFactors)
+		{
+			index = indexDetails[k]
+			inner[k,] = innerModelDetails[[k]][[k]][index,]
+		}
+		outer = getListOfData(currentRow, listOfColLists)
+		innerNamesList = list()
+		for (k in 1:length(currentRow))
+		{
+			innerNamesList = c(innerNamesList, namesList[currentRow[k]])
+		}
+		rownames(inner) = innerNamesList
+		colnames(inner) = innerNamesList
+		modes = c("A", "A", "A", "A")
+		tryCatch({
+			my_pls = plspm(modelData, inner, outer, modes)
+			score = my_pls$gof
+		return (c(formatModel(inner), score))
+		}, error=function(e){})
+		return (c(NA, NA))
+}
 reverseString <- function(a)
 {
 	paste(rev(substring(a,1:nchar(a),1:nchar(a))),collapse="")
@@ -59,7 +86,7 @@ formatModel <- function(X, score)
 			}	
 		}
 	}
-	return (paste0(substr(formattedModel, start=2, stop=nchar(formattedModel)-3), ",", score))
+	return(substr(formattedModel, start=2, stop=nchar(formattedModel)-3))
 }
 prepColumnNumbersForUse <- function (stringOfColNumbers)
 {
@@ -107,34 +134,21 @@ I = iterpc(numberOfLatents, numberOfLatents, ordered=TRUE)
 matrixOfChoices = getall(I)
 indexMatrix = as.matrix(gen.factorial(numberOfEntries, length(numberOfEntries), center=FALSE))
 colnames(indexMatrix) <- c()
-sink("output.csv")
-print("Model.Description,Goodness.Of.Fit")
+
+numCores = detectCores()-1
+cl <- makeCluster(numCores)
+registerDoParallel(cl, cores = numCores)
+df <- data.frame(Model.Description=character(), Goodness.Of.Fit=numeric(), stringsAsFactors=FALSE) 
+
 for (i in 1:nrow(matrixOfChoices))
 {
-	for (j in 1:nrow(indexMatrix))
+	output = foreach(n = 1:nrow(indexMatrix), .packages=c("plspm"), .combine=rbind) %dopar% 
 	{
-		currentRow = matrixOfChoices[i,]
-		inner = matrix(, nrow=numberOfLatents, ncol=numberOfLatents)
-		inner[1,] = rep(0, numberOfLatents)
-		for (k in 2:numberOfLatents)
-		{
-			index = indexMatrix[j,k]
-			inner[k,] = myRows[[k]][[k]][index,]
-		}
-		outer = getListOfData(currentRow, listOfColLists)
-		innerNamesList = list()
-		for (k in 1:length(currentRow))
-		{
-			innerNamesList = c(innerNamesList, namesList[currentRow[k]])
-		}
-		rownames(inner) = innerNamesList
-		colnames(inner) = innerNamesList
-		modes = c("A", "A", "A", "A")
-		tryCatch({
-			my_pls = plspm(data, inner, outer, modes)
-			score = my_pls$gof
-			print(paste(formatModel(inner, score)))
-		}, error=function(e){})
+		runModel(data, numberOfLatents, matrixOfChoices[i,], myRows, indexMatrix[n,])
 	}
+	df = rbind(df, output)
 }
-sink(type = "message")
+df = df[complete.cases(df),]
+rownames(df) = c()
+colnames(df) = c("Model.Description", "Goodness.Of.Fit")
+write.csv(df, file="output.csv", row.names=F, quote=FALSE)
