@@ -1,3 +1,4 @@
+Built and Tested with R 3.2 and 3.3
 Required Libraries
 require(plspm)
 require(iterpc)
